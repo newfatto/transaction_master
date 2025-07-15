@@ -1,4 +1,4 @@
-from utils import user_greeting, get_cards_info, excel_to_list, get_top_transactions, get_currency
+from utils import user_greeting, get_cards_info, excel_to_list, get_top_transactions, get_currency, get_stock_prices
 import json
 
 
@@ -10,7 +10,7 @@ def general_page_function(date_str: str):
         "cards": get_cards_info(excel_to_list("../data/operations.xlsx", date_str)),
         "top_transactions": get_top_transactions(excel_to_list("../data/operations.xlsx", date_str)),
         "currency_rates": get_currency('../user_settings.json'),
-        "stock_prices": []
+        "stock_prices": get_stock_prices('../user_settings.json')
     }
 
     json_string = json.dumps(result, ensure_ascii=False)
