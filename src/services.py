@@ -1,11 +1,11 @@
-from src.utils import excel_to_list
+from src.utils import excel_to_df
 from pandas import DataFrame
 import re
 import json
 
 def search_money_transfer_to_people(operations_list: DataFrame) -> str:
     """
-        Ищет в DataFrame переводы денег людям, чье имя указано в описании в формате "Имя Ф.".
+        Ищет в DataFrame переводы денег людям, если в описании указано имя в формате "Имя Ф.".
         Возвращает JSON объект с данными о подходящих транзакциях.
 
         Args:
@@ -44,4 +44,4 @@ def search_money_transfer_to_people(operations_list: DataFrame) -> str:
 
 
 if __name__ == '__main__':
-    print(search_money_transfer_to_people(excel_to_list("../data/operations.xlsx", "2020-10-26 14:42:26")))
+    print(search_money_transfer_to_people(excel_to_df("../data/operations.xlsx")))

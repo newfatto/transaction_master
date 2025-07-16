@@ -9,29 +9,31 @@ from datetime import datetime
 from typing import List, Dict, Any
 import json
 
+def date_to_current_date(date_str:str):
+    """Функция принимает на вход дату в формате YYYY-MM-DD HH:MM:SS и возвращает
+    дату в формате DD.MM.YYYY HH:MM:SS"""
+    date_obj = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
+    date = date_obj.strftime("%d.%m.%Y %H:%M:%S")
+    return date
 
-def excel_to_list(excel_path: str, date_str: str| Any) -> DataFrame:
+def excel_to_df(excel_path: str) -> DataFrame:
+    """Функция принимает на вход путь до excel-файла и возвращает Dataframe, созданный из этого файла"""
+    transactions_df = pd.read_excel(excel_path)
+    return transactions_df
+
+def transactions_since_first_day_of_month(transactions_df: DataFrame, date_str: str) -> DataFrame:
     """
-    Функция принимает на вход путь до excel-файла с информацией о финансовых операциях и
+    Функция принимает на вход Dataframe с информацией о финансовых операциях и
     дату в формате YYYY-MM-DD HH:MM:SS. Возвращает список словарей с данными
     за текущий месяц (если дата — 20.05.2025, то данные для анализа будут в
     диапазоне 01.05.2025-20.05.2025)
-
-    В Excel-файле даты хранятся в формате DD.MM.YYYY HH:MM:SS
     """
-    target_date = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
-    first_day_of_month = target_date.replace(day=1, hour=0, minute=0, second=0)
-    try:
-        df = pd.read_excel(excel_path, parse_dates=["Дата операции"], date_format="%d.%m.%Y %H:%M:%S")
+    transactions_df["Дата операции"] = pd.to_datetime(transactions_df["Дата операции"], format="%d.%m.%Y %H:%M:%S")
+    target_date_obj = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
+    first_day_of_month = target_date_obj.replace(day=1, hour=0, minute=0, second=0)
 
-    except FileNotFoundError:
-        raise FileNotFoundError(f"Файл {excel_path} не найден")
-    except Exception as e:
-        raise Exception(f"Ошибка при чтении файла: {str(e)}")
-
-    filtered_df = df[(df["Дата операции"] >= first_day_of_month) & (df["Дата операции"] <= target_date)]
-    result = filtered_df
-
+    result = transactions_df[(transactions_df["Дата операции"] >= first_day_of_month) &
+                                  (transactions_df["Дата операции"] <= target_date_obj)]
     return result
 
 
@@ -247,4 +249,7 @@ def get_stock_prices(path_to_json: str) -> List[Dict]:
 
 
 if __name__ == "__main__":
-    print(get_stock_prices('../user_settings.json'))
+
+    # print(date_to_current_date("2019-10-12 14:42:26"))
+
+    print(transactions_since_first_day_of_month(excel_to_df("../data/operations.xlsx"), "2019-10-12 14:42:26"))
