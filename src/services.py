@@ -3,13 +3,13 @@ from pandas import DataFrame
 import re
 import json
 
-def search_money_transfer_to_people(operations_list: DataFrame) -> str:
+def search_money_transfer_to_people(transactions_df: DataFrame) -> str:
     """
         Ищет в DataFrame переводы денег людям, если в описании указано имя в формате "Имя Ф.".
         Возвращает JSON объект с данными о подходящих транзакциях.
 
         Args:
-            operations_list: DataFrame с данными об операциях.
+            transactions_df: DataFrame с данными об операциях.
 
         Returns:
             JSON строка, представляющая список словарей с данными о транзакциях,
@@ -17,15 +17,15 @@ def search_money_transfer_to_people(operations_list: DataFrame) -> str:
             В случае ошибки возвращает JSON с ключом "error" и сообщением об ошибке.
         """
     try:
-        if not isinstance(operations_list, DataFrame):
+        if not isinstance(transactions_df, DataFrame):
             raise TypeError("Входной параметр должен быть DataFrame")
 
-        if 'Категория' not in operations_list.columns or 'Описание' not in operations_list.columns:
+        if 'Категория' not in transactions_df.columns or 'Описание' not in transactions_df.columns:
             raise KeyError(
                 "DataFrame должен содержать столбцы 'Категория' и 'Описание'")
 
         pattern = re.compile(r'^[А-ЯЁ][а-яё]+\s[А-ЯЁ]\.')
-        money_transfers = operations_list[operations_list['Категория'] == "Переводы"]
+        money_transfers = transactions_df[transactions_df['Категория'] == "Переводы"]
         filtered_transfers = money_transfers[money_transfers['Описание'].str.contains(pattern, regex=True, na=False)]
         filtered_transfers = filtered_transfers.apply(lambda x: x.astype(str) if x.dtype == 'datetime64[ns]' else x)
         result = filtered_transfers.to_dict(orient="records")

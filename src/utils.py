@@ -6,41 +6,63 @@ from dotenv import load_dotenv
 import requests
 
 from datetime import datetime
-from typing import List, Dict, Any
+from typing import List, Dict
 import json
+import logging
 
-def date_to_current_date(date_str:str):
-    """Функция принимает на вход дату в формате YYYY-MM-DD HH:MM:SS и возвращает
-    дату в формате DD.MM.YYYY HH:MM:SS"""
-    date_obj = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
-    date = date_obj.strftime("%d.%m.%Y %H:%M:%S")
-    return date
+from config import USER_SETTINGS_PATH_STR
+
+
+logger = logging.getLogger(__name__)
 
 def excel_to_df(excel_path: str) -> DataFrame:
-    """Функция принимает на вход путь до excel-файла и возвращает Dataframe, созданный из этого файла"""
-    transactions_df = pd.read_excel(excel_path)
-    return transactions_df
+    """
+    Загружает Excel-файл по указанному пути и возвращает DataFrame.
+    В случае ошибки выбрасывает ValueError с пояснением.
+    """
+    try:
+        transactions_df = pd.read_excel(excel_path)
+        return transactions_df
+    except FileNotFoundError:
+        raise ValueError(f"Файл не найден: {excel_path}")
+    except Exception as e:
+        raise ValueError(f"Ошибка при чтении Excel-файла: {e}")
 
 def transactions_since_first_day_of_month(transactions_df: DataFrame, date_str: str) -> DataFrame:
     """
     Функция принимает на вход Dataframe с информацией о финансовых операциях и
     дату в формате YYYY-MM-DD HH:MM:SS. Возвращает список словарей с данными
-    за текущий месяц (если дата — 20.05.2025, то данные для анализа будут в
-    диапазоне 01.05.2025-20.05.2025)
+    за текущий месяц (если дата 2025-05-20 00:00:00, то данные для анализа будут в
+    диапазоне 2025-05-01 00:00:00 - 2025-05-20 00:00:00)
     """
-    transactions_df["Дата операции"] = pd.to_datetime(transactions_df["Дата операции"], format="%d.%m.%Y %H:%M:%S")
-    target_date_obj = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
+    if "Дата операции" not in transactions_df.columns:
+        raise ValueError("Ожидается колонка 'Дата операции'")
+    try:
+        transactions_df["Дата операции"] = pd.to_datetime(transactions_df["Дата операции"],
+                                                          format="%d.%m.%Y %H:%M:%S",
+                                                          errors="coerce")
+    except Exception as e:
+        raise ValueError(f"Ошибка при преобразовании 'Дата операции': {e}")
+    try:
+        target_date_obj = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        raise ValueError(f"Неверный формат входной даты: {date_str}")
+
     first_day_of_month = target_date_obj.replace(day=1, hour=0, minute=0, second=0)
 
     result = transactions_df[(transactions_df["Дата операции"] >= first_day_of_month) &
-                                  (transactions_df["Дата операции"] <= target_date_obj)]
+                             (transactions_df["Дата операции"] <= target_date_obj)]
     return result
 
 
 def user_greeting() -> str:
     """
     Функция получает информацию об актуальной дате и времени, и в зависимости от времени возвращает приветствие
-    пользователя: с 6 до 11 'Доброе утро', с 12 до 16 'Добрый день', с 17 до 22 'Добрый вечер', с 23 до 5 'Доброй ночи'
+    пользователя:
+    с 6 до 11 'Доброе утро',
+    с 12 до 16 'Добрый день',
+    с 17 до 22 'Добрый вечер',
+    с 23 до 5 'Доброй ночи'
     """
     try:
         current_date = datetime.now()
@@ -61,18 +83,18 @@ def user_greeting() -> str:
         return f"Ошибка: Произошла непредвиденная ошибка: {e}"
 
 
-def get_cards_info(operations_list: DataFrame):
+def get_cards_info(transactions_df: DataFrame):
     """Функция принимает объект DataFrame с данными о банковских операциях, и возвращает список словарей, содержащий
     информацию: последние цифры карты, общая сумма расходов, кешбек (1 рубль на каждые 100 рублей)"""
 
     try:
-        if not isinstance(operations_list, DataFrame):
+        if not isinstance(transactions_df, DataFrame):
             raise TypeError("Входной параметр должен быть DataFrame")
 
         card_data = {}
         nan_card_expenses = 0
 
-        for index, row in operations_list.iterrows():
+        for index, row in transactions_df.iterrows():
             try:
                 card_number = row["Номер карты"]
                 amount = row["Сумма платежа"]
@@ -114,28 +136,30 @@ def get_cards_info(operations_list: DataFrame):
         return f"Ошибка: Произошла непредвиденная ошибка: {e}"
 
 
-def get_top_transactions(operations_list: DataFrame):
+def get_top_transactions(transactions_df: DataFrame):
+    """Функция принимает на вход объект Dataframe с банковскими операциями, и возвращает список словарей,
+    представляющих собой описание пяти транзакций с самой большой суммой платежа"""
     try:
-        if not isinstance(operations_list, DataFrame):
+        if not isinstance(transactions_df, DataFrame):
             raise TypeError("Входной параметр должен быть DataFrame")
 
-        required_columns = ["Сумма операции", "Дата платежа", "Категория", "Описание"]
+        required_columns = ["Сумма платежа", "Дата платежа", "Категория", "Описание"]
         for col in required_columns:
-            if col not in operations_list.columns:
+            if col not in transactions_df.columns:
                 raise KeyError(f"Столбец '{col}' отсутствует в DataFrame")
-        negative_transactions = operations_list[operations_list["Сумма операции"] < 0]
+        negative_transactions = transactions_df[transactions_df["Сумма платежа"] < 0]
         if negative_transactions.empty:
             return []
 
         top_transactions = negative_transactions.loc[
-            negative_transactions["Сумма операции"].abs().sort_values(ascending=False).index
+            negative_transactions["Сумма платежа"].abs().sort_values(ascending=False).index
         ]
         top_5_transactions = top_transactions.head(5)
         result = []
         for index, row in top_5_transactions.iterrows():
             transaction_info = {
                 "date": row["Дата платежа"],
-                "amount": -row["Сумма операции"],
+                "amount": -row["Сумма платежа"],
                 "category": row["Категория"],
                 "description": row["Описание"],
             }
@@ -150,21 +174,21 @@ def get_top_transactions(operations_list: DataFrame):
     except Exception as e:
         return f"Произошла непредвиденная ошибка: {e}"
 
-def get_currency(path_to_json: str) -> List[Dict]:
-    """Функция принимает на вход путь до json-файла, содержащего информацию о валютах, которые интересуют пользователя,
-    и возвращает список словарей, содержащий название валюты и её курс на сегодняшний день"""
+def get_currency() -> List[Dict]:
+    """Функция возвращает список словарей, содержащий название валюты, интересующей пользователя и её курс
+    на сегодняшний день"""
     result = []
 
     try:
-        with open (path_to_json, 'r', encoding='utf-8') as f:
+        with open (USER_SETTINGS_PATH_STR, 'r', encoding='utf-8') as f:
             try:
                 user_data = json.load(f)
                 user_currencies = user_data["user_currencies"]
             except json.JSONDecodeError:
-                print(f"Ошибка: Некорректный JSON формат в файле {path_to_json}")
+                print(f"Ошибка: Некорректный JSON формат в файле {USER_SETTINGS_PATH_STR}")
                 return []
     except FileNotFoundError:
-        print(f"Ошибка: Файл {path_to_json} не найден.")
+        print(f"Ошибка: Файл {USER_SETTINGS_PATH_STR} не найден.")
         return []
 
     load_dotenv()
@@ -199,13 +223,13 @@ def get_currency(path_to_json: str) -> List[Dict]:
 
 
 
-def get_stock_prices(path_to_json: str) -> List[Dict]:
+def get_stock_prices() -> List[Dict]:
     """Функция принимает на вход путь до json-файла, содержащего информацию об акциях, которые интересуют пользователя,
     и возвращает список словарей, содержащий название акции и её стоимость на сегодняшний день"""
     result = []
 
     try:
-        with open (path_to_json, 'r', encoding='utf-8') as f:
+        with open (USER_SETTINGS_PATH_STR, 'r', encoding='utf-8') as f:
             try:
                 user_data = json.load(f)
                 user_stocks = user_data["user_stocks"]
@@ -213,7 +237,7 @@ def get_stock_prices(path_to_json: str) -> List[Dict]:
                 print(f"Ошибка при чтении JSON: {e}")
                 return []
     except FileNotFoundError:
-        print(f"Ошибка: Файл {path_to_json} не найден.")
+        print(f"Ошибка: Файл {USER_SETTINGS_PATH_STR} не найден.")
         return []
 
     load_dotenv()
@@ -243,13 +267,3 @@ def get_stock_prices(path_to_json: str) -> List[Dict]:
             continue
 
     return result
-
-
-
-
-
-if __name__ == "__main__":
-
-    # print(date_to_current_date("2019-10-12 14:42:26"))
-
-    print(transactions_since_first_day_of_month(excel_to_df("../data/operations.xlsx"), "2019-10-12 14:42:26"))
