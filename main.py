@@ -1,12 +1,20 @@
+import logging.config
+import os
 from datetime import datetime
 
 import pandas as pd
+from dateutil.relativedelta import relativedelta
 
 from config import EXCEL_FILE_PATH_STR
 from src.reports import spending_by_category
 from src.services import search_money_transfer_to_people
 from src.utils import excel_to_df
 from src.views import general_page_function
+
+logs_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../logs"))
+os.makedirs(logs_dir, exist_ok=True)
+
+logging.config.fileConfig(os.path.join(os.path.dirname(__file__), "logging.ini"))
 
 
 def main() -> None:
@@ -71,26 +79,30 @@ def main() -> None:
                 )
                 if user_input == "1":
                     df = excel_to_df(EXCEL_FILE_PATH_STR)
-                    categories = df["Категория"].unique()
-                    print(f"Вам доступны следующие категории: {categories}")
-                    user_category = str(input("Введите название категории: "))
                     df["Дата платежа"] = pd.to_datetime(df["Дата платежа"], dayfirst=True)
                     print(
                         f"Вам доступны данные в период с {df['Дата платежа'].min().strftime('%Y-%m-%d %H:%M:%S')} по "
-                        f"{df['Дата платежа'].max().strftime('%Y-%m-%d %H:%M:%S')}"
+                        f"{df['Дата платежа'].max().strftime('%Y-%m-%d %H:%M:%S')}\n"
+                        "Введите интересующую Вас дату "
+                        "(будет выведена информация о транзакциях за три месяца, предшествующих ей)."
                     )
                     user_date_for_report = input("Введите дату в формате YYYY-MM-DD HH:MM:SS : ")
-                    try:
-                        datetime.strptime(user_date_for_report, "%Y-%m-%d %H:%M:%S")
 
+                    try:
+                        date_obj = datetime.strptime(user_date_for_report, "%Y-%m-%d %H:%M:%S")
+                        first_day = date_obj - relativedelta(months=3)
+                        period_df = df[(df["Дата платежа"] >= first_day) & (df["Дата платежа"] <= date_obj)]
+                        categories = period_df["Категория"].unique()
+                        print(f"Вам доступны следующие категории: {categories}")
+                        user_category = str(input("Введите название категории: "))
                         if user_category in categories:
                             report_data = spending_by_category(df, user_category, user_date_for_report)
                             print(report_data)
-                            break
                         else:
                             print("Указанной категории не существует.\n")
                     except ValueError:
                         print("Неправильный формат даты\n")
+
                 if user_input == "*":
                     break
                 elif user_input == "0":

@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 from datetime import datetime
 from typing import Callable, Optional, Union
@@ -7,6 +8,8 @@ import pandas as pd
 from dateutil.relativedelta import relativedelta
 
 from src.utils import excel_to_df
+
+logger = logging.getLogger(__name__)
 
 
 def my_decorator(
@@ -19,10 +22,12 @@ def my_decorator(
     """
 
     def inner(*args: object, **kwargs: object) -> str:
+        logger.debug(f"Вызван декоратор для функции {function.__name__} с file_name={file_name}")
         result = str(function(*args, **kwargs))
         os.makedirs(os.path.dirname(file_name), exist_ok=True)
         with open(file_name, "a", encoding="utf-8") as file:
             file.write(f"{result}\n")
+        logger.info(f"Результат работы функции {function.__name__} записан в файл {file_name}")
         return result
 
     return inner
@@ -34,14 +39,17 @@ def spending_by_category(transactions_df: pd.DataFrame, category: str, date: Opt
     опциональную дату в формате YYYY-MM-DD HH:MM:SS.
     Если дата не передана, то берется текущая дата.
     Функция возвращает траты по заданной категории за последние три месяца (от переданной даты)."""
+    logger.debug(f"Вызвана spending_by_category с категорией: {category}, датой: {date}")
     try:
         if not isinstance(transactions_df, pd.DataFrame):
+            logger.error("Входной параметр не является DataFrame")
             raise TypeError("Входной параметр должен быть DataFrame")
         try:
             transactions_df["Дата операции"] = pd.to_datetime(
                 transactions_df["Дата операции"], format="%d.%m.%Y %H:%M:%S", errors="coerce"
             )
             if transactions_df["Дата операции"].isnull().any():  # Проверяем, появились ли NaN
+                logger.error("Не удалось преобразовать столбец 'Дата операции' в datetime.")
                 raise ValueError(
                     "Не удалось преобразовать столбец 'Дата операции' в datetime. Убедитесь, что формат даты верен."
                 )
@@ -52,6 +60,7 @@ def spending_by_category(transactions_df: pd.DataFrame, category: str, date: Opt
                 try:
                     date = datetime.strptime(date, "%Y-%m-%d %H:%M:%S")
                 except ValueError:
+                    logger.error(f"Неверный формат даты: {date}. Ожидается YYYY-MM-DD HH:MM:SS")
                     raise ValueError(f"Неверный формат даты: {date}. Ожидается YYYY-MM-DD HH:MM:SS")
 
             first_day = date - relativedelta(months=3)
@@ -63,24 +72,31 @@ def spending_by_category(transactions_df: pd.DataFrame, category: str, date: Opt
             ]
 
             transactions_list = current_transactions.to_dict(orient="records")
+            logger.info(
+                f"Найдено {len(transactions_list)} транзакций по категории '{category}' за период {first_day} - {date}"
+            )
             return json.dumps(transactions_list, default=str, ensure_ascii=False)
 
         except KeyError as ke:
             error_message = f"Ошибка: Отсутствует столбец {ke} в DataFrame"
+            logger.error(error_message)
             print(error_message)
             return json.dumps({"error": error_message}, ensure_ascii=False)
 
         except Exception as e:
             error_message = f"Произошла ошибка: {e}"
+            logger.exception(error_message)
             print(error_message)
             return json.dumps({"error": error_message}, ensure_ascii=False)
 
     except TypeError as e:
         error_message = f"Ошибка типа данных: {e}"
+        logger.error(error_message)
         return json.dumps({"error": error_message}, ensure_ascii=False)
 
     except Exception as e:
         error_message = f"Произошла непредвиденная ошибка: {e}"
+        logger.exception(error_message)
         return json.dumps({"error": error_message}, ensure_ascii=False)
 
 
