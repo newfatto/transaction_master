@@ -1,21 +1,20 @@
-import pandas as pd
-from pandas import DataFrame
-
-import os
-from dotenv import load_dotenv
-import requests
-
-from datetime import datetime
-from typing import List, Dict
 import json
 import logging
+import os
+from datetime import datetime
+from typing import Any, Dict, List
+
+import pandas as pd
+import requests
+from dotenv import load_dotenv
+from pandas import DataFrame
 
 from config import USER_SETTINGS_PATH_STR
 
-
 logger = logging.getLogger(__name__)
 
-def excel_to_df(excel_path: str) -> DataFrame:
+
+def excel_to_df(excel_path: str | Any) -> DataFrame:
     """
     Загружает Excel-файл по указанному пути и возвращает DataFrame.
     В случае ошибки выбрасывает ValueError с пояснением.
@@ -28,6 +27,7 @@ def excel_to_df(excel_path: str) -> DataFrame:
     except Exception as e:
         raise ValueError(f"Ошибка при чтении Excel-файла: {e}")
 
+
 def transactions_since_first_day_of_month(transactions_df: DataFrame, date_str: str) -> DataFrame:
     """
     Функция принимает на вход Dataframe с информацией о финансовых операциях и
@@ -38,11 +38,13 @@ def transactions_since_first_day_of_month(transactions_df: DataFrame, date_str: 
     if "Дата операции" not in transactions_df.columns:
         raise ValueError("Ожидается колонка 'Дата операции'")
     try:
-        transactions_df["Дата операции"] = pd.to_datetime(transactions_df["Дата операции"],
-                                                          format="%d.%m.%Y %H:%M:%S",
-                                                          errors="coerce")
+        transactions_df["Дата операции"] = pd.to_datetime(
+            transactions_df["Дата операции"], format="%d.%m.%Y %H:%M:%S", errors="coerce"
+        )
     except Exception as e:
         raise ValueError(f"Ошибка при преобразовании 'Дата операции': {e}")
+    if not isinstance(date_str, str):
+        raise ValueError(f"Неверный формат входной даты: {date_str}")
     try:
         target_date_obj = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
     except ValueError:
@@ -50,8 +52,10 @@ def transactions_since_first_day_of_month(transactions_df: DataFrame, date_str: 
 
     first_day_of_month = target_date_obj.replace(day=1, hour=0, minute=0, second=0)
 
-    result = transactions_df[(transactions_df["Дата операции"] >= first_day_of_month) &
-                             (transactions_df["Дата операции"] <= target_date_obj)]
+    result = transactions_df[
+        (transactions_df["Дата операции"] >= first_day_of_month)
+        & (transactions_df["Дата операции"] <= target_date_obj)
+    ]
     return result
 
 
@@ -83,7 +87,7 @@ def user_greeting() -> str:
         return f"Ошибка: Произошла непредвиденная ошибка: {e}"
 
 
-def get_cards_info(transactions_df: DataFrame):
+def get_cards_info(transactions_df: DataFrame | Any) -> str | list[Any]:
     """Функция принимает объект DataFrame с данными о банковских операциях, и возвращает список словарей, содержащий
     информацию: последние цифры карты, общая сумма расходов, кешбек (1 рубль на каждые 100 рублей)"""
 
@@ -98,6 +102,9 @@ def get_cards_info(transactions_df: DataFrame):
             try:
                 card_number = row["Номер карты"]
                 amount = row["Сумма платежа"]
+
+                if not (isinstance(amount, (int, float)) or pd.isna(amount)):
+                    raise TypeError(f"Некорректный тип данных в строке DataFrame: {type(amount)}")
 
                 if pd.isna(card_number):
                     if isinstance(amount, (int, float)):
@@ -122,7 +129,9 @@ def get_cards_info(transactions_df: DataFrame):
         for card in card_data.values():
             total_spent = card["total_spent"]
             cashback = int(total_spent / 100)
-            result.append({"last_digits": card["last_digits"], "total_spent": round(total_spent, 2), "cashback": cashback})
+            result.append(
+                {"last_digits": card["last_digits"], "total_spent": round(total_spent, 2), "cashback": cashback}
+            )
 
         if nan_card_expenses > 0:
             cashback = int(nan_card_expenses / 100)
@@ -136,7 +145,7 @@ def get_cards_info(transactions_df: DataFrame):
         return f"Ошибка: Произошла непредвиденная ошибка: {e}"
 
 
-def get_top_transactions(transactions_df: DataFrame):
+def get_top_transactions(transactions_df: DataFrame | Any) -> str | list[Any]:
     """Функция принимает на вход объект Dataframe с банковскими операциями, и возвращает список словарей,
     представляющих собой описание пяти транзакций с самой большой суммой платежа"""
     try:
@@ -174,13 +183,14 @@ def get_top_transactions(transactions_df: DataFrame):
     except Exception as e:
         return f"Произошла непредвиденная ошибка: {e}"
 
+
 def get_currency() -> List[Dict]:
     """Функция возвращает список словарей, содержащий название валюты, интересующей пользователя и её курс
     на сегодняшний день"""
     result = []
 
     try:
-        with open (USER_SETTINGS_PATH_STR, 'r', encoding='utf-8') as f:
+        with open(USER_SETTINGS_PATH_STR, "r", encoding="utf-8") as f:
             try:
                 user_data = json.load(f)
                 user_currencies = user_data["user_currencies"]
@@ -192,7 +202,7 @@ def get_currency() -> List[Dict]:
         return []
 
     load_dotenv()
-    api_key = os.getenv('MY_API_CURRENCY')
+    api_key = os.getenv("MY_API_CURRENCY")
     if not api_key:
         print("Ошибка: API ключ 'MY_API_CURRENCY' не найден.")
         return []
@@ -201,9 +211,7 @@ def get_currency() -> List[Dict]:
         currency_rate = {"currency": currency}
         url = f"https://api.apilayer.com/exchangerates_data/convert?to=RUB&from={currency}&amount=1"
 
-        headers = {
-            "apikey": api_key
-        }
+        headers = {"apikey": api_key}
         try:
             response = requests.get(url, headers=headers, timeout=10)
             response.raise_for_status()
@@ -215,12 +223,11 @@ def get_currency() -> List[Dict]:
             response_data = response.json()
             currency_rate["rate"] = round(response_data["info"]["rate"], 2)
             result.append(currency_rate)
-        except:
-            print(f"Запрос не был успешным. Возможная причина: {response.reason}")
+        except (KeyError, TypeError, ValueError, AttributeError) as e:
+            print(f"Запрос не был успешным. Возможная причина: {response.reason}, ошибка: {e}")
             continue
 
     return result
-
 
 
 def get_stock_prices() -> List[Dict]:
@@ -229,7 +236,7 @@ def get_stock_prices() -> List[Dict]:
     result = []
 
     try:
-        with open (USER_SETTINGS_PATH_STR, 'r', encoding='utf-8') as f:
+        with open(USER_SETTINGS_PATH_STR, "r", encoding="utf-8") as f:
             try:
                 user_data = json.load(f)
                 user_stocks = user_data["user_stocks"]
@@ -241,7 +248,7 @@ def get_stock_prices() -> List[Dict]:
         return []
 
     load_dotenv()
-    api_key = os.getenv('MY_API_STOCK')
+    api_key = os.getenv("MY_API_STOCK")
     if not api_key:
         print("Ошибка: API ключ 'MY_API_STOCK' не найден.")
         return []

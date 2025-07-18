@@ -72,3 +72,6 @@ custom result
 ['a', 'b', 'c']
 42
 custom result
+{'test': 123}
+['a', 'b', 'c']
+42
