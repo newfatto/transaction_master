@@ -1,4 +1,4 @@
-from typing import Any
+import json
 
 from config import EXCEL_FILE_PATH_STR
 from src.utils import (
@@ -12,7 +12,7 @@ from src.utils import (
 )
 
 
-def general_page_function(date_str: str) -> dict[str, Any]:
+def general_page_function(date_str: str) -> str:
     """
     Функция принимает на вход строку с датой и временем в формате YYYY-MM-DD HH:MM:SS и возвращает JSON-ответ,
     содержащий:
@@ -72,7 +72,7 @@ def general_page_function(date_str: str) -> dict[str, Any]:
     except Exception as e:
         result["stock_prices"] = f"Ошибка при получении стоимости акций: {e}"
 
-    return result
+    return json.dumps(result, ensure_ascii=False)
 
 
 if __name__ == "__main__":

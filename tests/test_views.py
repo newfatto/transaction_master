@@ -1,3 +1,4 @@
+import json
 from unittest.mock import patch
 
 import pytest
@@ -29,6 +30,7 @@ def test_general_page_function_success() -> None:
     ):
 
         result = general_page_function("2023-01-01 12:00:00")
+        result = json.loads(result)
         assert isinstance(result, dict)
         assert set(result.keys()) == {"greeting", "cards", "top_transactions", "currency_rates", "stock_prices"}
         assert result["greeting"] == fake_greeting
@@ -50,7 +52,7 @@ def test_general_page_function_success() -> None:
         (Exception("stock error"), "stock_prices"),
     ],
 )
-def test_general_page_function_errors(exception: object, field: object) -> None:
+def test_general_page_function_errors(exception: Exception, field: str) -> None:
     """
     Проверяет, что функция general_page_function корректно обрабатывает ошибки на каждом этапе и возвращает строку
     с ошибкой в соответствующем поле.
@@ -107,6 +109,7 @@ def test_general_page_function_errors(exception: object, field: object) -> None:
         patches["get_stock_prices"],
     ):
         result = general_page_function("2023-01-01 12:00:00")
+        result = json.loads(result)
         assert isinstance(result, dict)
         assert field in result
         assert "Ошибка" in str(result[field])
