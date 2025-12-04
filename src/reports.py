@@ -1,0 +1,104 @@
+import json
+import logging
+import os
+from datetime import datetime
+from typing import Callable, Optional, Union
+
+import pandas as pd
+from dateutil.relativedelta import relativedelta
+
+from src.utils import excel_to_df
+
+logger = logging.getLogger(__name__)
+
+
+def my_decorator(
+    function: Callable[[pd.DataFrame, str, Optional[str]], Union[str, None]],
+    file_name: str = "../data/reports_data.txt",
+) -> Callable[..., str]:
+    """Декоратор принимает на вход имя файла, куда будет записан результат работы функции.
+    При отсутствии имени, результат работу функции записывается в '.data/reports_data.txt'
+    Данные, полученные после каждого вызова функции, добавляются в файл.
+    """
+
+    def inner(*args: object, **kwargs: object) -> str:
+        logger.debug(f"Вызван декоратор для функции {function.__name__} с file_name={file_name}")
+        result = str(function(*args, **kwargs))
+        os.makedirs(os.path.dirname(file_name), exist_ok=True)
+        with open(file_name, "a", encoding="utf-8") as file:
+            file.write(f"{result}\n")
+        logger.info(f"Результат работы функции {function.__name__} записан в файл {file_name}")
+        return result
+
+    return inner
+
+
+@my_decorator
+def spending_by_category(transactions_df: pd.DataFrame, category: str, date: Optional[str] = None) -> Optional[str]:
+    """Функция принимает на вход: датафрейм с транзакциями, название категории,
+    опциональную дату в формате YYYY-MM-DD HH:MM:SS.
+    Если дата не передана, то берется текущая дата.
+    Функция возвращает траты по заданной категории за последние три месяца (от переданной даты)."""
+    logger.debug(f"Вызвана spending_by_category с категорией: {category}, датой: {date}")
+    try:
+        if not isinstance(transactions_df, pd.DataFrame):
+            logger.error("Входной параметр не является DataFrame")
+            raise TypeError("Входной параметр должен быть DataFrame")
+        try:
+            transactions_df["Дата операции"] = pd.to_datetime(
+                transactions_df["Дата операции"], format="%d.%m.%Y %H:%M:%S", errors="coerce"
+            )
+            if transactions_df["Дата операции"].isnull().any():  # Проверяем, появились ли NaN
+                logger.error("Не удалось преобразовать столбец 'Дата операции' в datetime.")
+                raise ValueError(
+                    "Не удалось преобразовать столбец 'Дата операции' в datetime. Убедитесь, что формат даты верен."
+                )
+            if date is None:
+                date = datetime.now()
+
+            else:
+                try:
+                    date = datetime.strptime(date, "%Y-%m-%d %H:%M:%S")
+                except ValueError:
+                    logger.error(f"Неверный формат даты: {date}. Ожидается YYYY-MM-DD HH:MM:SS")
+                    raise ValueError(f"Неверный формат даты: {date}. Ожидается YYYY-MM-DD HH:MM:SS")
+
+            first_day = date - relativedelta(months=3)
+
+            current_transactions = transactions_df[
+                (transactions_df["Дата операции"] >= first_day)
+                & (transactions_df["Дата операции"] <= date)
+                & (transactions_df["Категория"] == category)
+            ]
+
+            transactions_list = current_transactions.to_dict(orient="records")
+            logger.info(
+                f"Найдено {len(transactions_list)} транзакций по категории '{category}' за период {first_day} - {date}"
+            )
+            return json.dumps(transactions_list, default=str, ensure_ascii=False)
+
+        except KeyError as ke:
+            error_message = f"Ошибка: Отсутствует столбец {ke} в DataFrame"
+            logger.error(error_message)
+            print(error_message)
+            return json.dumps({"error": error_message}, ensure_ascii=False)
+
+        except Exception as e:
+            error_message = f"Произошла ошибка: {e}"
+            logger.exception(error_message)
+            print(error_message)
+            return json.dumps({"error": error_message}, ensure_ascii=False)
+
+    except TypeError as e:
+        error_message = f"Ошибка типа данных: {e}"
+        logger.error(error_message)
+        return json.dumps({"error": error_message}, ensure_ascii=False)
+
+    except Exception as e:
+        error_message = f"Произошла непредвиденная ошибка: {e}"
+        logger.exception(error_message)
+        return json.dumps({"error": error_message}, ensure_ascii=False)
+
+
+if __name__ == "__main__":
+    print(spending_by_category(excel_to_df("../data/operations.xlsx"), "Каршеринг", "2021-12-30 14:42:26"))
